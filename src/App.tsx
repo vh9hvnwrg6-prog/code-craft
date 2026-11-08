@@ -5,6 +5,7 @@ import { ChatPanel } from './components/ChatPanel';
 import { ActivityPanel } from './components/ActivityPanel';
 import { Toolbar } from './components/Toolbar';
 import { Sidebar } from './components/Sidebar';
+import { AISettings } from './components/AISettings';
 import './styles.css';
 
 interface Workspace {
@@ -57,6 +58,7 @@ export default function App() {
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activityOpen, setActivityOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <div className="app-root">
@@ -65,6 +67,7 @@ export default function App() {
         session={activeSession}
         onWorkspaceChange={setActiveWorkspace}
         onSessionChange={setActiveSession}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
       <div className="app-body">
         <Sidebar
@@ -99,6 +102,14 @@ export default function App() {
           <ActivityPanel open={activityOpen} onToggle={() => setActivityOpen(!activityOpen)} />
         </div>
       </div>
+
+      {settingsOpen && (
+        <div className="settings-overlay" onClick={() => setSettingsOpen(false)}>
+          <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
+            <AISettings onClose={() => setSettingsOpen(false)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

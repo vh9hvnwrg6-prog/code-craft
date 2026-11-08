@@ -2,6 +2,7 @@
   "name": "codecraft",
   "version": "0.1.0",
   "description": "CodeCraft AI Coding IDE",
+  "author": "CodeCraft",
   "main": "dist/main.js",
   "scripts": {
     "dev": "vite",
@@ -12,11 +13,16 @@
     "package": "npm run build && npx electron-builder"
   },
   "build": {
+    "appId": "com.codecraft.ide",
     "productName": "CodeCraft",
     "directories": {
       "output": "release"
     },
+    "files": [
+      "dist/**/*"
+    ],
     "mac": {
+      "category": "public.app-category.developer-tools",
       "target": "dmg"
     }
   },
@@ -46,12 +52,5 @@
     "monaco-editor": "^0.57.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
-  },
-  "allowScripts": {
-    "electron@33.4.11": true,
-    "esbuild@0.25.12": true,
-    "better-sqlite3": true,
-    "keytar": true,
-    "fsevents": true
   }
 }
