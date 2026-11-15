@@ -83,7 +83,7 @@ export class ConfigStore {
       modelId: cfg.modelId,
       baseUrl: validatedUrl
     };
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(data, null, 2), 'utf8');
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
     this.config = { ...cfg, baseUrl: validatedUrl };
   }
 

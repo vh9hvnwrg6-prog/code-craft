@@ -31,13 +31,16 @@ export function AISettings({ onClose, onSave }: { onClose: () => void; onSave?: 
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [claudeTesting, setClaudeTesting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [statusMsg, setStatusMsg] = useState('');
+  const [claudeStatus, setClaudeStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [claudeStatusMsg, setClaudeStatusMsg] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
     let mounted = true;
-    (window as any).electronAPI.llmGetConfig().then((cfg: LLMConfig) => {
+    (window as any).electronAPI?.llmGetConfig().then((cfg: LLMConfig) => {
       if (!mounted) return;
       setProvider(cfg.provider || 'LLM API');
       setModelId(cfg.modelId || '');
@@ -93,6 +96,27 @@ export function AISettings({ onClose, onSave }: { onClose: () => void; onSave?: 
       setStatusMsg(err?.message ?? 'Connection failed.');
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleClaudeTest = async () => {
+    setClaudeTesting(true);
+    setClaudeStatus('idle');
+    setClaudeStatusMsg('');
+    try {
+      const result = await (window as any).electronAPI.claudeTestConnection();
+      if (result.ok) {
+        setClaudeStatus('success');
+        setClaudeStatusMsg(`Claude Code API OK — HTTP ${result.status}`);
+      } else {
+        setClaudeStatus('error');
+        setClaudeStatusMsg(`HTTP ${result.status}: ${result.errorSnippet || 'Connection failed.'}`);
+      }
+    } catch (err: any) {
+      setClaudeStatus('error');
+      setClaudeStatusMsg(err?.message ?? 'Connection failed.');
+    } finally {
+      setClaudeTesting(false);
     }
   };
 
@@ -207,6 +231,19 @@ export function AISettings({ onClose, onSave }: { onClose: () => void; onSave?: 
           </div>
         )}
 
+        {claudeStatus === 'success' && (
+          <div className="ai-success">
+            <CheckCircle2 size={14} />
+            <span>{claudeStatusMsg}</span>
+          </div>
+        )}
+        {claudeStatus === 'error' && (
+          <div className="ai-error">
+            <XCircle size={14} />
+            <span>{claudeStatusMsg}</span>
+          </div>
+        )}
+
         <div className="ai-actions">
           <button className="btn-primary" onClick={handleSave} disabled={saving}>
             <Save size={14} />
@@ -215,6 +252,10 @@ export function AISettings({ onClose, onSave }: { onClose: () => void; onSave?: 
           <button className="btn-secondary" onClick={handleTest} disabled={testing}>
             {testing ? <Loader2 size={14} className="spin" /> : <Plug size={14} />}
             <span>{testing ? 'Testing…' : 'Test Connection'}</span>
+          </button>
+          <button className="btn-secondary" onClick={handleClaudeTest} disabled={claudeTesting}>
+            {claudeTesting ? <Loader2 size={14} className="spin" /> : <Cpu size={14} />}
+            <span>{claudeTesting ? 'Testing…' : 'Test Claude Code'}</span>
           </button>
           <button className="btn-danger" onClick={handleClear}>
             <Trash2 size={14} />

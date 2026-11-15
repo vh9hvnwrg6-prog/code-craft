@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronUp, Terminal, CheckCircle2, AlertTriangle, Activity, Loader2 } from 'lucide-react';
+import { ChevronDown, Eye, CheckCircle2, AlertTriangle, Activity, Loader2 } from 'lucide-react';
 
 interface ToolEvent {
   id: string;
@@ -24,7 +24,8 @@ export function ActivityPanel({ open, onToggle }: { open: boolean; onToggle: () 
           <span>ACTIVITY</span>
           <span className="activity-count">{events.length}</span>
         </div>
-        <ChevronUp size={14} className={`chev ${open ? 'open' : ''}`} />
+        <Eye size={14} className={`eye ${open ? 'open' : 'closed'}`} />
+        <ChevronDown size={14} className={`chev ${open ? 'open' : 'closed'}`} />
       </div>
       {open && (
         <div className="activity-scroll">

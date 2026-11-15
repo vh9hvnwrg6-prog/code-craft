@@ -2,9 +2,12 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
+import * as http from 'http';
+import * as https from 'https';
 import * as pty from 'node-pty';
 import { LLMClient } from './src/llm/client';
 import { ConfigStore } from './src/llm/configStore';
+import { createMemoryStore } from './src/llm/memoryStore';
 
 // ---------------------------------------------------------------------------
 // Claude Code CLI resolution (priority list, resolved at startup)
@@ -101,7 +104,16 @@ function buildClaudeEnv(llmConfig?: { baseUrl?: string; apiKey?: string; modelId
     if (baseUrl.endsWith('/v1')) baseUrl = baseUrl.slice(0, -3);
     env.ANTHROPIC_BASE_URL = baseUrl;
     env.ANTHROPIC_AUTH_TOKEN = llmConfig.apiKey;
-    if (llmConfig.modelId) env.ANTHROPIC_MODEL = llmConfig.modelId;
+    if (llmConfig.modelId) {
+      env.ANTHROPIC_MODEL = llmConfig.modelId;
+      // Claude Code also reads these per-tier model overrides. Pointing them
+      // at the configured model ID keeps every sub-call on the same provider.
+      env.ANTHROPIC_SMALL_FAST_MODEL = llmConfig.modelId;
+      env.ANTHROPIC_DEFAULT_HAIKU_MODEL = llmConfig.modelId;
+      env.ANTHROPIC_DEFAULT_SONNET_MODEL = llmConfig.modelId;
+      env.ANTHROPIC_DEFAULT_OPUS_MODEL = llmConfig.modelId;
+      env.ANTHROPIC_DEFAULT_FABLE_MODEL = llmConfig.modelId;
+    }
   }
 
   // Never use a raw ANTHROPIC_API_KEY — the token is passed as AUTH_TOKEN.
@@ -238,6 +250,78 @@ const CLAUDE_DISALLOWED_TOOLS = 'Bash(rm:*),Bash(sudo:*),Bash(curl:*),Bash(wget:
 // LLM configuration store (encrypted with Electron safeStorage)
 // ---------------------------------------------------------------------------
 const configStore = new ConfigStore();
+const memoryStore = createMemoryStore();
+
+// First-run onboarding (stored locally, never bundles credentials)
+const { OnboardingStore } = require('./src/onboarding/store');
+const onboardingStore = new OnboardingStore();
+
+// ---------------------------------------------------------------------------
+// Claude Code memory IPC — persistent knowledge across sessions
+// ---------------------------------------------------------------------------
+ipcMain.handle('memory:add', (_event, entry) => {
+  try {
+    return { ok: true, entry: memoryStore.add(entry) };
+  } catch (err: any) {
+    return { ok: false, error: err?.message ?? String(err) };
+  }
+});
+
+ipcMain.handle('memory:list', (_event, filter) => {
+  return { ok: true, entries: memoryStore.list(filter) };
+});
+
+ipcMain.handle('memory:search', (_event, query: string) => {
+  return { ok: true, entries: memoryStore.search(query) };
+});
+
+ipcMain.handle('memory:update', (_event, id: string, patch) => {
+  const entry = memoryStore.update(id, patch);
+  return entry ? { ok: true, entry } : { ok: false, error: 'Memory entry not found.' };
+});
+
+ipcMain.handle('memory:remove', (_event, id: string) => {
+  return { ok: memoryStore.remove(id) };
+});
+
+ipcMain.handle('memory:clear', () => {
+  memoryStore.clear();
+  return { ok: true };
+});
+
+/**
+ * Build a system-prompt block from stored memories so Claude Code
+ * starts each session with the user's accumulated context.
+ */
+function buildMemoryPrompt(): string {
+  const all = memoryStore.list();
+  if (all.length === 0) return '';
+
+  const labels: Record<string, string> = {
+    fact: 'Known facts',
+    preference: 'User preferences',
+    project: 'Project context',
+    summary: 'Previous session summaries',
+    instruction: 'Standing instructions',
+  };
+
+  const grouped: Record<string, string[]> = {};
+  for (const e of all) {
+    if (!grouped[e.type]) grouped[e.type] = [];
+    grouped[e.type].push(e.content);
+  }
+
+  const lines: string[] = ['## CodeCraft Memory', 'You have persistent memory from previous sessions:'];
+  for (const [type, items] of Object.entries(grouped)) {
+    lines.push(`\n### ${labels[type] ?? type}`);
+    for (const item of items.slice(-30)) lines.push(`- ${item}`);
+  }
+  return lines.join('\n');
+}
+
+ipcMain.handle('memory:build-prompt', () => {
+  return { ok: true, prompt: buildMemoryPrompt() };
+});
 
 ipcMain.handle('llm:get-config', () => {
   // Returns config WITHOUT the secret key.
@@ -269,6 +353,64 @@ ipcMain.handle('llm:test-connection', async () => {
   } catch (err: any) {
     return { ok: false, error: err?.message ?? String(err) };
   }
+});
+
+// ---------------------------------------------------------------------------
+// Claude Code test connection (Anthropic-style /v1/messages)
+// ---------------------------------------------------------------------------
+ipcMain.handle('claude:test-connection', async () => {
+  const cfg = configStore.get();
+  if (!cfg || !cfg.apiKey) {
+    return { ok: false, error: 'No API configuration saved. Open Settings and save your API key first.' };
+  }
+
+  // Claude Code appends /v1/messages itself, so the base URL must NOT end in /v1.
+  let baseUrl = cfg.baseUrl.replace(/\/+$/, '');
+  if (baseUrl.endsWith('/v1')) baseUrl = baseUrl.slice(0, -3);
+
+  const url = new URL(baseUrl + '/v1/messages');
+  const isLoopback = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname);
+  const mod = isLoopback ? http : https;
+
+  const body = JSON.stringify({
+    model: cfg.modelId || 'claude-3-5-sonnet-latest',
+    max_tokens: 20,
+    messages: [{ role: 'user', content: 'Say "ok" and nothing else.' }]
+  });
+
+  return new Promise((resolve) => {
+    const req = mod.request(
+      {
+        hostname: url.hostname,
+        port: url.port || (mod === https ? 443 : 80),
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          // Send the key both ways — some proxies require Bearer, others x-api-key.
+          'x-api-key': cfg.apiKey,
+          Authorization: `Bearer ${cfg.apiKey}`,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body)
+        }
+      },
+      (res) => {
+        let raw = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => { raw += c; });
+        res.on('end', () => {
+          // Only return a short snippet of the body — never the key.
+          const snippet = raw.slice(0, 160);
+          resolve({ ok: (res.statusCode ?? 0) < 400, status: res.statusCode ?? 0, errorSnippet: snippet });
+        });
+      }
+    );
+    req.on('error', (err) => {
+      resolve({ ok: false, status: 0, errorSnippet: err.message });
+    });
+    req.write(body);
+    req.end();
+  });
 });
 
 ipcMain.handle('llm:chat-stream', async (event, { messages, modelId }: { messages: any[]; modelId?: string }) => {
@@ -326,6 +468,34 @@ ipcMain.handle('llm:stop-generation', () => {
 ipcMain.handle('llm:clear-config', () => {
   configStore.clear();
   return { ok: true };
+});
+
+// ---------------------------------------------------------------------------
+// First-run onboarding
+// ---------------------------------------------------------------------------
+
+ipcMain.handle('onboarding:get', () => {
+  return { ok: true, config: onboardingStore.get() };
+});
+
+ipcMain.handle('onboarding:set-name', (_event, name: string) => {
+  onboardingStore.setUserName(name);
+  return { ok: true, config: onboardingStore.get() };
+});
+
+ipcMain.handle('onboarding:set-preferences', (_event, prefs: any) => {
+  onboardingStore.setPreferences(prefs);
+  return { ok: true, config: onboardingStore.get() };
+});
+
+ipcMain.handle('onboarding:complete', () => {
+  onboardingStore.complete();
+  return { ok: true, config: onboardingStore.get() };
+});
+
+ipcMain.handle('onboarding:reset', () => {
+  onboardingStore.reset();
+  return { ok: true, config: onboardingStore.get() };
 });
 
 // ---------------------------------------------------------------------------
@@ -416,6 +586,86 @@ ipcMain.handle('fs:open-folder', async (event) => {
   return { ok: true, path: folderPath, name: path.basename(folderPath), tree };
 });
 
+/** Open native file picker for attachments (multiple selection). */
+ipcMain.handle('attachments:open-dialog', async (event) => {
+  const win = BrowserWindow.getFocusedWindow();
+  if (!win) return { ok: false, error: 'No focused window.' };
+  const result = await dialog.showOpenDialog(win, {
+    title: 'Select files to attach',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'Supported', extensions: [
+        'txt','md','json','js','jsx','ts','tsx','html','css','scss','py','java','c','cpp','h','rs','go','php','sql','sh','yaml','yml','xml','toml','log','example','pdf'
+      ] }
+    ]
+  });
+  if (result.canceled) return { ok: false, canceled: true };
+  return { ok: true, files: result.filePaths };
+});
+
+/** Process selected attachments: read content, extract PDF text, enforce limits. */
+ipcMain.handle('attachments:process', async (event, filePaths: string[]) => {
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MiB per file
+  const MAX_TOTAL_TEXT = 200000; // characters
+  const allowedTextExt = new Set([
+    'txt','md','json','js','jsx','ts','tsx','html','css','scss','py','java','c','cpp','h','rs','go','php','sql','sh','yaml','yml','xml','toml','log','example'
+  ]);
+  const pdfExt = new Set(['pdf']);
+  const results: any[] = [];
+  let totalChars = 0;
+  const pdfParse = require('pdf-parse');
+
+  for (const rawPath of filePaths) {
+    const check = isPathAllowed(rawPath, event);
+    if (!check.ok) {
+      results.push({ name: path.basename(rawPath), error: check.error });
+      continue;
+    }
+    const resolved = check.resolvedPath!;
+    const stat = fs.statSync(resolved);
+    if (!stat.isFile()) {
+      results.push({ name: path.basename(resolved), error: 'Not a file' });
+      continue;
+    }
+    if (stat.size > MAX_FILE_SIZE) {
+      results.push({ name: path.basename(resolved), error: `File too large (${(stat.size/1024/1024).toFixed(1)} MiB > 5 MiB)` });
+      continue;
+    }
+    const ext = path.extname(resolved).toLowerCase().slice(1);
+    let content = '';
+    try {
+      if (allowedTextExt.has(ext)) {
+        content = fs.readFileSync(resolved, 'utf8');
+      } else if (pdfExt.has(ext)) {
+        const data = fs.readFileSync(resolved);
+        const pdfData = await pdfParse(data);
+        content = pdfData.text || '';
+      } else {
+        results.push({ name: path.basename(resolved), error: 'Unsupported file type' });
+        continue;
+      }
+    } catch (e: any) {
+      results.push({ name: path.basename(resolved), error: e.message || 'Read error' });
+      continue;
+    }
+    // Trim if exceeding total limit
+    if (totalChars + content.length > MAX_TOTAL_TEXT) {
+      const remaining = MAX_TOTAL_TEXT - totalChars;
+      if (remaining <= 0) {
+        results.push({ name: path.basename(resolved), error: 'Total attachment size limit reached' });
+        continue;
+      }
+      content = content.slice(0, remaining);
+      results.push({ name: path.basename(resolved), size: stat.size, content, warning: 'Truncated to fit total size limit' });
+      totalChars = MAX_TOTAL_TEXT;
+      continue;
+    }
+    results.push({ name: path.basename(resolved), size: stat.size, content });
+    totalChars += content.length;
+  }
+  return { ok: true, attachments: results };
+});
+
 /** Create a new file inside a project directory. */
 ipcMain.handle('fs:create-file', (event, parentDir: string, fileName: string) => {
   const check = isPathAllowed(parentDir, event);
@@ -498,6 +748,57 @@ function saveRecent(paths: string[]) {
 }
 
 ipcMain.handle('fs:get-recent', () => loadRecent());
+
+// ---------------------------------------------------------------------------
+// CodeCraft project vault — a folder under ~/Documents that holds all
+// projects created through the IDE, like a Finder-style project library.
+// ---------------------------------------------------------------------------
+const CODECRAFT_VAULT = path.join(app.getPath('documents'), 'CodeCraft');
+
+function ensureVault(): string {
+  try {
+    if (!fs.existsSync(CODECRAFT_VAULT)) {
+      fs.mkdirSync(CODECRAFT_VAULT, { recursive: true, mode: 0o700 });
+    }
+  } catch (err: any) {
+    console.error('[vault] failed to create vault:', err?.message ?? String(err));
+  }
+  return CODECRAFT_VAULT;
+}
+
+/** Build a file tree rooted at the CodeCraft vault (~/Documents/CodeCraft). */
+ipcMain.handle('fs:open-vault', (event) => {
+  const vault = ensureVault();
+  const documents = app.getPath('documents');
+  // Build a Finder-style tree rooted at ~/Documents so users can see and
+  // drag/drop every project and file, not just the empty CodeCraft folder.
+  setWorkspaceRoot(event, documents);
+  const tree = buildTree(documents, documents);
+  return { ok: true, path: vault, name: 'CodeCraft', tree, rootPath: documents };
+});
+
+/** Return the CodeCraft vault path so the terminal can spawn inside it. */
+ipcMain.handle('fs:get-vault-path', () => {
+  return { ok: true, path: ensureVault() };
+});
+
+/** Create a new project folder inside the CodeCraft vault. */
+ipcMain.handle('fs:create-project', (_event, projectName: string) => {
+  if (typeof projectName !== 'string' || !projectName.trim()) {
+    return { ok: false, error: 'Project name is required.' };
+  }
+  const vault = ensureVault();
+  const fullPath = path.join(vault, projectName.trim());
+  if (fs.existsSync(fullPath)) {
+    return { ok: false, error: 'A project with that name already exists.' };
+  }
+  try {
+    fs.mkdirSync(fullPath, { recursive: true, mode: 0o700 });
+    return { ok: true, path: fullPath, name: projectName.trim() };
+  } catch (err: any) {
+    return { ok: false, error: err?.message ?? String(err) };
+  }
+});
 
 ipcMain.handle('fs:add-recent', (_event, folderPath: string) => {
   const recent = loadRecent().filter((p) => p !== folderPath);

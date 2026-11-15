@@ -1,5 +1,5 @@
-import React from 'react';
-import { FolderOpen, MessageSquare, Settings, History, Plus, Search } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { FolderOpen, Settings, Plus, Search, House } from 'lucide-react';
 
 interface Workspace {
   id: string;
@@ -7,58 +7,79 @@ interface Workspace {
   path: string;
 }
 
-interface Session {
-  id: string;
-  title: string;
-  updatedAt: number;
-}
-
 interface SidebarProps {
   workspaces: Workspace[];
-  sessions: Session[];
   activeWorkspace: Workspace | null;
-  activeSession: Session | null;
   collapsed: boolean;
   onToggle: () => void;
   onWorkspaceSelect: (w: Workspace) => void;
-  onSessionSelect: (s: Session) => void;
+  onHome: () => void;
+  onOpenSettings: () => void;
+  userName?: string;
 }
 
-export function Sidebar({ workspaces, sessions, activeWorkspace, activeSession, collapsed, onToggle, onWorkspaceSelect, onSessionSelect }: SidebarProps) {
-  if (collapsed) {
-    return (
-      <div className="sidebar sidebar-collapsed">
-        <button className="icon-btn" onClick={onToggle} title="Open sidebar">
-          <FolderOpen size={16} />
-        </button>
-      </div>
-    );
-  }
+export function Sidebar({ workspaces, activeWorkspace, collapsed, onToggle, onWorkspaceSelect, onHome, onOpenSettings, userName }: SidebarProps) {
+  const [name, setName] = useState(userName || 'Alfie Sumner');
+
+  // Read the saved display name from onboarding. Falls back to the
+  // hardcoded default if nothing is stored yet.
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res: any = await (window as any).electronAPI?.onboardingGet?.();
+        if (mounted && res?.ok && res.config?.userName) {
+          setName(res.config.userName);
+        }
+      } catch {
+        // IPC unavailable — keep the default.
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const displayName = (userName || name || 'Alfie Sumner').trim() || 'Alfie Sumner';
+  const initial = displayName.charAt(0).toUpperCase() || 'A';
 
   return (
     <div className="sidebar">
       <div className="sidebar-header">
-        <span className="sidebar-title">NAVIGATION</span>
-        <button className="icon-btn" onClick={onToggle} title="Collapse">
+        <button className="sidebar-home" onClick={onHome} title="Home">
+          <House size={14} />
+          <span>Home</span>
+        </button>
+        <button className="icon-btn" onClick={onToggle} title="Collapse sidebar">
           <FolderOpen size={14} />
         </button>
       </div>
 
+      <div className="sidebar-section" style={{ paddingTop: 4 }}>
+        <button className="sidebar-item" style={{ fontWeight: 600 }} onClick={() => onHome && onHome()}>
+          <Plus size={16} />
+          <span>New</span>
+          <span style={{ marginLeft: 'auto', fontSize: 10, color: '#6b6b80' }}>⌘N</span>
+        </button>
+        <div className="sidebar-search">
+          <Search size={13} />
+          <input placeholder="Search" readOnly />
+        </div>
+      </div>
+
       <div className="sidebar-section">
         <div className="section-label">
-          <FolderOpen size={12} />
-          <span>WORKSPACES</span>
+          <FolderOpen size={13} />
+          <span>Projects</span>
+          <button className="section-add" title="Open folder">
+            <Plus size={12} />
+          </button>
         </div>
-        <button className="section-add" title="Open folder">
-          <Plus size={12} />
-        </button>
         {workspaces.map((w) => (
           <div
             key={w.id}
             className={`sidebar-item ${activeWorkspace?.id === w.id ? 'active' : ''}`}
             onClick={() => onWorkspaceSelect(w)}
           >
-            <FolderOpen size={14} />
+            <FolderOpen size={15} />
             <span className="item-text">
               <span className="item-name">{w.name}</span>
               <span className="item-sub">{w.path}</span>
@@ -67,37 +88,21 @@ export function Sidebar({ workspaces, sessions, activeWorkspace, activeSession, 
         ))}
       </div>
 
-      <div className="sidebar-section">
-        <div className="section-label">
-          <History size={12} />
-          <span>SESSIONS</span>
-        </div>
-        <button className="section-add" title="New session">
-          <Plus size={12} />
-        </button>
-        {sessions.map((s) => (
-          <div
-            key={s.id}
-            className={`sidebar-item ${activeSession?.id === s.id ? 'active' : ''}`}
-            onClick={() => onSessionSelect(s)}
-          >
-            <MessageSquare size={14} />
-            <span className="item-text">
-              <span className="item-name">{s.title}</span>
-              <span className="item-sub">{new Date(s.updatedAt).toLocaleDateString()}</span>
-            </span>
-          </div>
-        ))}
-      </div>
-
       <div className="sidebar-section sidebar-footer">
         <div className="section-label">
-          <Settings size={12} />
-          <span>SETTINGS</span>
+          <Settings size={13} />
+          <span>Settings</span>
         </div>
-        <div className="sidebar-item" onClick={() => {}}>
-          <Settings size={14} />
+        <div className="sidebar-item" onClick={onOpenSettings}>
+          <Settings size={15} />
           <span className="item-text"><span className="item-name">Preferences</span></span>
+        </div>
+        <div className="sidebar-item" style={{ marginTop: 4 }}>
+          <div className="user-avatar">A</div>
+          <span className="item-text">
+            <span className="item-name">Alfie Sumner</span>
+            <span className="item-sub">Free</span>
+          </span>
         </div>
       </div>
     </div>

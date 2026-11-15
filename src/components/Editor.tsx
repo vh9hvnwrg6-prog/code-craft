@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 
 interface EditorProps {
   openFiles: string[];
@@ -40,13 +39,49 @@ export default function App() {
 export function Editor({ openFiles, activeFile }: EditorProps) {
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
+  // Load the file from disk (via the main process) when the active file changes.
   useEffect(() => {
-    if (activeFile) {
-      setContent(SAMPLE_CONTENT[activeFile] ?? '// (no preview available)');
+    let mounted = true;
+    if (!activeFile) {
+      setContent('');
+      setLoaded(false);
+      return;
     }
+    const api = (window as any).electronAPI;
+    if (!api?.fsReadFile) {
+      setContent('// (no file API available)');
+      setLoaded(true);
+      return;
+    }
+    api.fsReadFile(activeFile).then((res: any) => {
+      if (!mounted) return;
+      if (res?.ok) {
+        setContent(res.content);
+      } else {
+        setContent(`// ${res?.error ?? 'Could not read file'}`);
+      }
+      setLoaded(true);
+    });
+    return () => { mounted = false; };
   }, [activeFile]);
+
+  // Save back to disk when the user stops typing.
+  useEffect(() => {
+    if (!activeFile || !loaded) return;
+    const api = (window as any).electronAPI;
+    if (!api?.fsWriteFile) return;
+    const t = setTimeout(() => {
+      setSaving(true);
+      api.fsWriteFile(activeFile, content).then((res: any) => {
+        setSaving(false);
+        if (!res?.ok) console.error('[editor] save failed:', res?.error);
+      });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [content, activeFile, loaded]);
 
   if (!activeFile) {
     return (
@@ -77,7 +112,7 @@ export function Editor({ openFiles, activeFile }: EditorProps) {
       />
       <div className="editor-statusbar">
         <span>{activeFile.split('/').pop()}</span>
-        <span>Ln {content.split('\n').findIndex((l, i) => l.length >= 0 && i === 0) + 1}, Col 1</span>
+        <span>Ln 1, Col 1</span>
         <span className={saving ? 'saving' : 'saved'}>{saving ? 'Saving…' : 'Saved'}</span>
       </div>
     </div>
