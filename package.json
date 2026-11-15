@@ -1,8 +1,13 @@
 {
   "name": "codecraft",
   "version": "0.1.0",
+  "desktopName": "CodeCraft",
   "description": "CodeCraft AI Coding IDE",
-  "author": "CodeCraft",
+  "author": {
+    "name": "CodeCraft",
+    "email": "hello@codecraft.dev"
+  },
+  "homepage": "https://github.com/codecraft/codecraft",
   "main": "dist/main.js",
   "scripts": {
     "dev": "vite",
@@ -13,7 +18,8 @@
     "package": "npm run build && npx electron-builder",
     "dist:mac": "npm run build && npx electron-builder --mac",
     "dist:mac:intel": "npm run build && npx electron-builder --mac --x64",
-    "dist:mac:arm": "npm run build && npx electron-builder --mac --arm64"
+    "dist:mac:arm": "npm run build && npx electron-builder --mac --arm64",
+    "dist:linux": "npm run build && npx electron-builder --linux"
   },
   "build": {
     "appId": "com.codecraft.ide",
@@ -28,6 +34,38 @@
       "category": "public.app-category.developer-tools",
       "target": ["dmg", "zip"],
       "icon": "build/icon.icns"
+    },
+    "linux": {
+      "category": "Development",
+      "target": ["rpm", "AppImage", "deb"],
+      "icon": "build/icon.iconset/icon_512x512.png",
+      "syncDesktopName": true,
+      "maintainer": "CodeCraft <hello@codecraft.dev>",
+      "desktop": {
+        "entry": {
+          "Name": "CodeCraft",
+          "Comment": "AI Coding IDE",
+          "Categories": "Development;TextEditor",
+          "Terminal": "true"
+        }
+      }
+    },
+    "rpm": {
+      "depends": [
+        "libX11",
+        "libXext",
+        "libXfixes",
+        "libXi",
+        "libXrender",
+        "libGL",
+        "libnss3",
+        "libnspr4",
+        "libdrm2",
+        "libxkbcommon0",
+        "libgbm1",
+        "cups-libs",
+        "gtk3"
+      ]
     }
   },
   "devDependencies": {
