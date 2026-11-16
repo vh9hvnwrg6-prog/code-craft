@@ -1,9 +1,10 @@
 const { app, safeStorage } = require('electron');
 const http = require('http');
 const fs = require('fs');
+const path = require('path');
 app.setName('codecraft');
 app.whenReady().then(() => {
-  const raw = JSON.parse(fs.readFileSync('/Users/alfie/Library/Application Support/codecraft/llm-config.json', 'utf8'));
+  const raw = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'llm-config.json'), 'utf8'));
   const apiKey = safeStorage.decryptString(Buffer.from(raw.apiKey, 'base64'));
   const models = ['auto:default','test-model','claude-3-5-sonnet-latest','claude-3-5-haiku-latest','gpt-4o'];
   let i = 0;

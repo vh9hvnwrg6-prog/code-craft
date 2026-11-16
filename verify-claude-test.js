@@ -1,12 +1,13 @@
 const { app, safeStorage } = require('electron');
 const http = require('http');
 const fs = require('fs');
+const path = require('path');
 
 // safeStorage keyring is keyed by the app name — must match the app that saved the config.
 app.setName('codecraft');
 
 app.whenReady().then(() => {
-  const file = '/Users/alfie/Library/Application Support/codecraft/llm-config.json';
+  const file = path.join(app.getPath('userData'), 'llm-config.json');
   const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
   const apiKey = safeStorage.decryptString(Buffer.from(raw.apiKey, 'base64'));
 

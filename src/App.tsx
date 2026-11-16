@@ -23,8 +23,8 @@ interface Session {
 }
 
 const SAMPLE_WORKSPACES: Workspace[] = [
-  { id: 'ws-1', name: 'CodeCraft', path: '/Users/alfie/CodeCraft' },
-  { id: 'ws-2', name: 'Hello-World', path: '/Users/alfie/hello-world' }
+  { id: 'ws-1', name: 'CodeCraft', path: '~/CodeCraft' },
+  { id: 'ws-2', name: 'Hello-World', path: '~/hello-world' }
 ];
 
 const SAMPLE_SESSIONS: Session[] = [

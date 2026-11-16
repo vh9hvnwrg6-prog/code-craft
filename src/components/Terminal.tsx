@@ -52,7 +52,7 @@ export function Terminal() {
     setStatus('connecting');
     try {
       // Spawn inside the CodeCraft project vault so the workspace root check passes.
-      let cwd = '/Users/alfie/CodeCraft';
+      let cwd = process.env.HOME || '/tmp';
       try {
         const vault = await (window as any).electronAPI?.fsGetVaultPath?.();
         if (vault?.ok && vault?.path) cwd = vault.path;

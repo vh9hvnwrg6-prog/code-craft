@@ -7,7 +7,7 @@
     "name": "CodeCraft",
     "email": "hello@codecraft.dev"
   },
-  "homepage": "https://github.com/codecraft/codecraft",
+  "homepage": "https://github.com/vh9hvnwrg6-prog/code-craft",
   "main": "dist/main.js",
   "scripts": {
     "dev": "vite",
@@ -91,11 +91,9 @@
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-web-links": "^0.12.0",
-    "better-sqlite3": "^13.0.3",
-    "keytar": "^7.9.0",
     "lucide-react": "^1.70.0",
     "monaco-editor": "^0.57.0",
-    "node-pty": "^1.1.0",
+    "node-pty": "^1.2.0-beta.18",
     "pdf-parse": "^2.4.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

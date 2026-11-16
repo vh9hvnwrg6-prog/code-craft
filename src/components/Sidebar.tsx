@@ -19,7 +19,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ workspaces, activeWorkspace, collapsed, onToggle, onWorkspaceSelect, onHome, onOpenSettings, userName }: SidebarProps) {
-  const [name, setName] = useState(userName || 'Alfie Sumner');
+  const [name, setName] = useState(userName || 'CodeCraft User');
 
   // Read the saved display name from onboarding. Falls back to the
   // hardcoded default if nothing is stored yet.
@@ -38,7 +38,7 @@ export function Sidebar({ workspaces, activeWorkspace, collapsed, onToggle, onWo
     return () => { mounted = false; };
   }, []);
 
-  const displayName = (userName || name || 'Alfie Sumner').trim() || 'Alfie Sumner';
+  const displayName = (userName || name || 'CodeCraft User').trim() || 'CodeCraft User';
   const initial = displayName.charAt(0).toUpperCase() || 'A';
 
   return (
@@ -98,9 +98,9 @@ export function Sidebar({ workspaces, activeWorkspace, collapsed, onToggle, onWo
           <span className="item-text"><span className="item-name">Preferences</span></span>
         </div>
         <div className="sidebar-item" style={{ marginTop: 4 }}>
-          <div className="user-avatar">A</div>
+          <div className="user-avatar">{initial}</div>
           <span className="item-text">
-            <span className="item-name">Alfie Sumner</span>
+            <span className="item-name">{displayName}</span>
             <span className="item-sub">Free</span>
           </span>
         </div>

@@ -6,7 +6,7 @@ interface EditorProps {
 }
 
 const SAMPLE_CONTENT: Record<string, string> = {
-  '/Users/alfie/CodeCraft/main.ts': `import { app, BrowserWindow } from 'electron';
+  'main.ts': `import { app, BrowserWindow } from 'electron';
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -22,14 +22,14 @@ function createWindow() {
 
 app.whenReady().then(createWindow);
 `,
-  '/Users/alfie/CodeCraft/src/main.tsx': `import React from 'react';
+  'src/main.tsx': `import React from 'react';
 import ReactDOM from 'react-dom/client';
 
 export default function App() {
   return <div>Hello CodeCraft</div>;
 }
 `,
-  '/Users/alfie/CodeCraft/package.json': `{
+  'package.json': `{
   "name": "codecraft",
   "version": "0.1.0"
 }
